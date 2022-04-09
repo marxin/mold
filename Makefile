@@ -130,7 +130,7 @@ all: mold mold-wrapper.so
 -include $(SRCS:%.cc=out/%.d)
 
 mold: $(OBJS) $(MIMALLOC_LIB) $(TBB_LIB)
-	$(CXX) $(OBJS) -o $@ $(MOLD_LDFLAGS) $(LDFLAGS)
+	time $(CXX) $(OBJS) -o $@ $(MOLD_LDFLAGS) $(LDFLAGS)
 	ln -sf mold ld
 	ln -sf mold ld64.mold
 
