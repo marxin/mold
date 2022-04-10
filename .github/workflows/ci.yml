@@ -18,7 +18,7 @@ jobs:
     - name: ccache
       uses: hendrikmuhs/ccache-action@v1
     - name: make
-      run: PATH="/usr/lib/ccache:/usr/local/opt/ccache/libexec:$PATH" make CC=clang CXX=clang++ -j$(nproc) CXXFLAGS=-g LDFLAGS=-fuse-ld=bfd
+      run: PATH="/usr/lib/ccache:/usr/local/opt/ccache/libexec:$PATH" make CC=clang CXX=clang++ -j$(nproc) CXXFLAGS=-g LDFLAGS=-fuse-ld=mold
     - name: check
       run: readelf -p .comment mold
     - name: make test
