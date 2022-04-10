@@ -11,6 +11,7 @@ jobs:
     - uses: actions/checkout@v2
     - uses: rui314/setup-mold@v1
       with:
+        mold-version: 1.1.0
         make-default: false
     - name: apt-get
       run: sudo dpkg --add-architecture i386 && sudo apt-get update && sudo apt-get install git build-essential libstdc++-10-dev cmake clang libssl-dev zlib1g-dev libxxhash-dev libtbb-dev git bsdmainutils dwarfdump pkg-config
