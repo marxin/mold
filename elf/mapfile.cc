@@ -1,6 +1,7 @@
 #include "mold.h"
 
 #include <fstream>
+#include <format>
 #include <iomanip>
 #include <ios>
 #include <sstream>
@@ -69,11 +70,9 @@ void print_map(Context<E> &ctx) {
   *out << "               VMA       Size Align Out     In      Symbol\n";
 
   for (Chunk<E> *osec : ctx.chunks) {
-    *out << std::showbase
-         << std::setw(18) << std::hex << (u64)osec->shdr.sh_addr << std::dec
-         << std::setw(11) << (u64)osec->shdr.sh_size
-         << std::setw(6) << (u64)osec->shdr.sh_addralign
-         << " " << osec->name << "\n";
+    *out << std::format("{:>#18x}{:>11}{:>6} {}\n", (u64)osec->shdr.sh_addr,
+                        (u64)osec->shdr.sh_size, (u64)osec->shdr.sh_addralign,
+                        osec->name);
 
     if (osec->kind() != OUTPUT_SECTION)
       continue;
@@ -87,19 +86,14 @@ void print_map(Context<E> &ctx) {
       opt_demangle = ctx.arg.demangle;
       u64 addr = osec->shdr.sh_addr + mem->offset;
 
-      ss << std::showbase
-         << std::setw(18) << std::hex << addr << std::dec
-         << std::setw(11) << (u64)mem->sh_size
-         << std::setw(6) << (1 << (u64)mem->p2align)
-         << "         " << *mem << "\n";
+      ss << std::format("{:>#18x}{:>11}{:>6}{:>9}{}\n", addr, (u64)mem->sh_size,
+                        1 << (u64)mem->p2align, "", *mem);
 
       typename Map<E>::const_accessor acc;
       if (map.find(acc, mem))
         for (Symbol<E> *sym : acc->second)
-          ss << std::showbase
-             << std::setw(18) << std::hex << sym->get_addr(ctx) << std::dec
-             << "          0     0                 "
-             << *sym << "\n";
+          ss << std::format("{:>#18x}{:>11}{:>6}{:>17}{}\n", sym->get_addr(ctx), 0,
+                            0, "", *sym);
 
       bufs[i] = ss.str();
     });

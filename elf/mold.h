@@ -8,6 +8,7 @@
 #include <cassert>
 #include <cstdint>
 #include <fstream>
+#include <format>
 #include <functional>
 #include <iostream>
 #include <map>
@@ -2837,3 +2838,29 @@ inline bool relax_tlsdesc(Context<E> &ctx, Symbol<E> &sym) {
 }
 
 } // namespace mold::elf
+
+template<class E, class CharT>
+struct std::formatter<mold::elf::InputSection<E>, CharT> {
+    constexpr auto parse(std::format_parse_context& ctx) {
+        return ctx.begin();
+    }
+
+    auto format(const mold::elf::InputSection<E> &file, std::format_context& ctx) const {
+      stringstream out;
+      out << file;
+      return std::format_to(ctx.out(), "{}", out.str());
+    }
+};
+
+template<class E, class CharT>
+struct std::formatter<mold::elf::Symbol<E>, CharT> {
+    constexpr auto parse(std::format_parse_context& ctx) {
+        return ctx.begin();
+    }
+
+    auto format(const mold::elf::Symbol<E> &symbol, std::format_context& ctx) const {
+      stringstream out;
+      out << symbol;
+      return std::format_to(ctx.out(), "{}", out.str());
+    }
+};
