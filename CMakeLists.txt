@@ -304,7 +304,7 @@ include_directories(${CMAKE_CURRENT_BINARY_DIR})
 # compiler instances. This is hacky but greatly reduces compile time
 # on a multicore machine.
 list(APPEND MOLD_ELF_TARGETS
-  X86_64)
+  X86_64 RV64LE)
 
 list(APPEND MOLD_ELF_TEMPLATE_FILES
   elf/arch-loongarch.cc
