@@ -19,7 +19,10 @@ namespace mold {
 template <typename E>
 int redo_main(Context<E> &ctx, int argc, char **argv) {
   std::string_view target = ctx.arg.emulation;
-  unreachable();
+
+  if (target == RV64LE::name)
+    return mold_main<RV64LE>(argc, argv);
+  abort();
 }
 
 template <typename E>
