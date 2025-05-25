@@ -5,35 +5,28 @@ on:
 env:
   UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
 jobs:
-  build-clang:
+  build-sanitizers:
     strategy:
       matrix:
         target:
-        # Disable PCH for the default configuration. This prevents relying on implicit includes.
-        - '-DCMAKE_DISABLE_PRECOMPILE_HEADERS=On'
+        - ''
+        - '-DMOLD_USE_ASAN=On'
         - '-DMOLD_USE_TSAN=On'
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-24.04
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
     - uses: rui314/setup-mold@staging
-    - name: install-build-deps
-      run: sudo ./install-build-deps.sh
-    - name: ccache
-      uses: hendrikmuhs/ccache-action@v1
+    - run: sudo ./install-build-deps.sh
     - name: build
       run: |
-        echo "/usr/lib/ccache:/usr/local/opt/ccache/libexec" >> $GITHUB_PATH
-        sudo apt-get install -y clang++-12
+        sudo apt-get install -y clang-18 clang gcc-multilib gdb dwarfdump zstd
         mkdir build
         cd build
-        cmake -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++-12 ${{ matrix.target }} ..
+        cmake -DCMAKE_BUILD_TYPE=Debug -DCMAKE_C_COMPILER=clang-18 -DCMAKE_CXX_COMPILER=clang++-18 ${{ matrix.target }} ..
         cmake --build . -j$(nproc)
-    - name: test
-      run: |
-        cd build
-        ctest -j$(nproc)
+    - run: cd build; ctest --output-on-failure -j$(nproc)
     - name: archive test results
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       if: failure()
       with:
         name: test-results-clang
@@ -41,68 +34,27 @@ jobs:
           build
           !build/CMakeFiles
 
-  build-gcc:
-    runs-on: ubuntu-20.04
-    container: gcc:11.1.0
+  build-multi-archs:
+    runs-on: ubuntu-24.04
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
     - name: install-build-deps
-      shell: bash
       run: |
-        # Install cross toolchains
-        ./install-build-deps.sh
-        ./install-cross-tools.sh
-
-        # Install a RV32 toolchain from third party since it's not available
-        # as an Ubuntu package.
-        mkdir /rv32
-        wget -O- -q https://github.com/riscv-collab/riscv-gnu-toolchain/releases/download/2023.07.07/riscv32-glibc-ubuntu-20.04-gcc-nightly-2023.07.07-nightly.tar.gz | tar -C /rv32 --strip-components=1 -xzf -
-
-        ln -sf /rv32/sysroot /usr/riscv32-linux-gnu
-        echo '/rv32/bin/riscv32-unknown-linux-gnu-gcc -L/usr/riscv32-linux-gnu "$@"' > /usr/bin/riscv32-linux-gnu-gcc
-        echo '/rv32/bin/riscv32-unknown-linux-gnu-g++ -L/usr/riscv32-linux-gnu "$@"' > /usr/bin/riscv32-linux-gnu-g++
-        chmod 755 /usr/bin/riscv32-linux-gnu-{gcc,g++}
-
-        for i in objdump objcopy strip; do
-          ln -sf /rv32/bin/riscv32-unknown-linux-gnu-$i /usr/bin/riscv32-linux-gnu-$i
-        done
-
-        # Install a LoongArch toolchain
-        mkdir /larch
-        wget -O- -q https://github.com/loongson/build-tools/releases/download/2024.06.01/x86_64-cross-tools-loongarch64-binutils_2.42-gcc_14.1.0-glibc_2.39.tar.xz | tar -C /larch --strip-components=1 --xz -xf -
-
-        cp -r /larch/loongarch64-unknown-linux-gnu/lib/* /larch/target/lib64
-        ln -sf /larch/target /usr/loongarch64-linux-gnu
-
-        for i in gcc g++ objdump objcopy strip; do
-          ln -sf /larch/bin/loongarch64-unknown-linux-gnu-$i /usr/bin/loongarch64-linux-gnu-$i
-        done
-
-        wget -O /usr/local/bin/qemu-loongarch64 -q https://github.com/loongson/build-tools/releases/download/2023.08.08/qemu-loongarch64
-        chmod 755 /usr/local/bin/qemu-loongarch64
-
-        # Install Intel SDE CPU emulator for CET-related tests
-        mkdir /sde
-        wget -O- -q https://downloadmirror.intel.com/813591/sde-external-9.33.0-2024-01-07-lin.tar.xz | tar -C /sde --strip-components=1 --xz -xf -
-        ln -s /sde/sde /usr/bin
-    - name: ccache
-      uses: hendrikmuhs/ccache-action@v1
+        sudo ./install-build-deps.sh
+        sudo ./install-cross-tools.sh
+        sudo .github/workflows/install-extras.sh
     - name: build
       run: |
-        echo "/usr/lib/ccache:/usr/local/opt/ccache/libexec" >> $GITHUB_PATH
         mkdir build
         cd build
         cmake ..
         cmake --build . -j$(nproc)
-    - name: test
-      run: |
-        cd build
-        ctest -j$(nproc)
+    - run: cd build; ctest --output-on-failure -j$(nproc)
     - name: archive test results
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       if: failure()
       with:
-        name: test-results-gcc
+        name: test-results-multi-archs
         path: |
           build
           !build/CMakeFiles
@@ -113,13 +65,16 @@ jobs:
         distro:
         - alpine
         - archlinux
+        - debian:11 # GCC 10 and CMake 3.18 - the minimum supported by mold
         - fedora
         - gentoo/stage3
         - opensuse/tumbleweed
+        - ubuntu:22.04
+        - ubuntu:25.04
     runs-on: ubuntu-latest
     container: ${{ matrix.distro }}
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v4
     - run: ./install-build-deps.sh
     - name: build
       run: |
@@ -127,35 +82,31 @@ jobs:
         cd build
         cmake ..
         cmake --build . -j$(nproc)
-    - name: test
-      run: |
-        cd build
-        ctest -j$(nproc)
+    - run: cd build; ctest --output-on-failure -j$(nproc)
+    - name: archive test results
+      uses: actions/upload-artifact@v4
+      if: failure()
+      with:
+        name: test-results-${{ matrix.distro }}
+        path: |
+          build
+          !build/CMakeFiles
 
   build-macos:
-    runs-on: macos-12
-    strategy:
-      matrix:
-        target:
-        # Disable PCH for the default configuration. This prevents relying on implicit includes.
-        - '-DCMAKE_DISABLE_PRECOMPILE_HEADERS=On'
-        - '-DMOLD_USE_ASAN=On'
+    runs-on: macos-latest
     steps:
-    - uses: actions/checkout@v3
-    - name: ccache
-      uses: hendrikmuhs/ccache-action@v1
+    - uses: actions/checkout@v4
     - name: build
       run: |
-        echo "/usr/lib/ccache:/usr/local/opt/ccache/libexec" >> $GITHUB_PATH
         mkdir build
         cd build
-        cmake ${{ matrix.target }} ..
+        cmake ..
         cmake --build . -j$(sysctl -n hw.physicalcpu)
 
   build-windows:
     runs-on: windows-latest
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
     - name: build
       run: |
         mkdir build
@@ -166,7 +117,7 @@ jobs:
   build-msys:
     runs-on: windows-latest
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
     - name: Setup MSYS2
       uses: msys2/setup-msys2@v2
       with:
@@ -178,5 +129,21 @@ jobs:
       run: |
         mkdir build
         cd build
-        cmake -GNinja -DMOLD_USE_MIMALLOC=OFF -DMOLD_USE_SYSTEM_TBB=ON -DMOLD_USE_MOLD=OFF ..
+        cmake -GNinja -DMOLD_USE_MIMALLOC=OFF -DMOLD_USE_SYSTEM_TBB=ON ..
         cmake --build . -j $(nproc)
+
+  build-freebsd:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - name: Build and test
+      uses: vmactions/freebsd-vm@v1
+      with:
+        usesh: true
+        run: |
+          ./install-build-deps.sh
+          mkdir build
+          cd build
+          cmake ..
+          cmake --build . -j$(nproc)
+          ctest --output-on-failure -j$(nproc)

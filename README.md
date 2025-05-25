@@ -24,8 +24,7 @@ free to [file a bug report](https://github.com/rui314/mold/issues).
 
 mold supports x86-64, i386, ARM64, ARM32, 64-bit/32-bit little/big-endian
 RISC-V, 32-bit PowerPC, 64-bit big-endian PowerPC ELFv1, 64-bit little-endian
-PowerPC ELFv2, s390x, 64-bit/32-bit LoongArch, SPARC64, m68k, SH-4, and DEC
-Alpha.
+PowerPC ELFv2, s390x, 64-bit/32-bit LoongArch, SPARC64, m68k, and SH-4.
 
 ## Why does linking speed matter?
 
@@ -77,12 +76,12 @@ installation location by passing `-DCMAKE_INSTALL_PREFIX=<directory>`.
 For other cmake options, see the comments in `CMakeLists.txt`.
 
 If you are not using a recent enough Linux distribution, or if `cmake` does
-not work for you for any reason, you can use Docker to build mold in a Docker
-environment. To do so, run `./dist.sh` in this directory instead of using
-`cmake`. The shell script will pull a Docker image, build mold and auxiliary
+not work for you for any reason, you can use Podman to build mold in a
+container. To do so, run `./dist.sh` in this directory instead of using
+`cmake`. The shell script will pull a container image, build mold and auxiliary
 files inside it, and package them into a single tar file named
-`mold-$version-$arch-linux.tar.gz`. You can extract the tar file anywhere and
-use the mold executable within it.
+`dist/mold-$version-$arch-linux.tar.gz`. You can extract the tar file anywhere
+and use the mold executable in it.
 
 ## How to use
 
@@ -121,7 +120,7 @@ accept an absolute path as an argument for `-fuse-ld`.
 Create `.cargo/config.toml` in your project directory with the following:
 
 ```toml
-[target.x86_64-unknown-linux-gnu]
+[target.'cfg(target_os = "linux")']
 linker = "clang"
 rustflags = ["-C", "link-arg=-fuse-ld=/path/to/mold"]
 ```
@@ -132,8 +131,8 @@ example above, we use `clang` as a linker driver since it always accepts the
 may be able to remove the `linker = "clang"` line.
 
 ```toml
-[target.x86_64-unknown-linux-gnu]
-rustflags = ["-C", "link-arg=-fuse-ld=/path/to/mold"]
+[target.'cfg(target_os = "linux")']
+rustflags = ["-C", "link-arg=-fuse-ld=mold"]
 ```
 
 If you want to use mold for all projects, add the above snippet to
@@ -156,6 +155,14 @@ GCC is recent enough to recognize this option.
 
 If you want to use mold for all projects, add the above snippet to
 `~/.config/config.nims`.
+
+</details>
+
+<details><summary>If you are using Conan package manager</summary>
+
+You can configure [Conan](https://github.com/conan-io) to download the latest
+version of `mold` and use it as the linker when building your dependencies and
+projects from source. Please see the instructions [here](https://conan.io/center/recipes/mold).
 
 </details>
 
@@ -265,3 +272,4 @@ the following people and organizations who have sponsored $128/month or more:
 - [Bryant Biggs](https://github.com/bryantbiggs)
 - [kraptor23](https://github.com/kraptor23)
 - [Jinkyu Yi](https://github.com/jincreator)
+- [Pedro Navarro](https://github.com/pedronavf)

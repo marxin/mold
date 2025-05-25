@@ -1,4 +1,4 @@
-# Copyright (c) 2020-2024 Intel Corporation
+# Copyright (c) 2020-2025 Intel Corporation
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -66,6 +66,7 @@ function(tbb_add_test)
     endif()
 
     set_property(TEST ${_tbb_test_TARGET_NAME} PROPERTY ENVIRONMENT ${TBB_TESTS_ENVIRONMENT} APPEND)
+    set_property(TEST ${_tbb_test_TARGET_NAME} PROPERTY RUN_SERIAL TRUE)
 
     # Prefer using target_link_options instead of target_link_libraries to specify link options because
     # target_link_libraries may incorrectly handle some options (on Windows, for example).
@@ -79,7 +80,8 @@ function(tbb_add_test)
         $<$<CONFIG:DEBUG>:TBB_USE_DEBUG>
         $<$<BOOL:${TBB_CPF}>:__TBB_CPF_BUILD=1>
         $<$<NOT:$<BOOL:${BUILD_SHARED_LIBS}>>:__TBB_DYNAMIC_LOAD_ENABLED=0>
-        $<$<NOT:$<BOOL:${BUILD_SHARED_LIBS}>>:__TBB_SOURCE_DIRECTLY_INCLUDED=1>)
+        $<$<NOT:$<BOOL:${BUILD_SHARED_LIBS}>>:__TBB_SOURCE_DIRECTLY_INCLUDED=1>
+        $<$<BOOL:${TBB_TCM_TESTING}>:__TBB_TCM_TESTING_ENABLED=1>)
 
     target_link_libraries(${_tbb_test_TARGET_NAME} PRIVATE ${_tbb_test_DEPENDENCIES} Threads::Threads ${TBB_COMMON_LINK_LIBS})
 
@@ -110,6 +112,7 @@ function(tbb_add_c_test)
     endif()
 
     set_property(TEST ${_tbb_test_NAME} PROPERTY ENVIRONMENT ${TBB_TESTS_ENVIRONMENT} APPEND)
+    set_property(TEST ${_tbb_test_NAME} PROPERTY RUN_SERIAL TRUE)
 
     target_compile_definitions(${_tbb_test_NAME} PRIVATE
         $<$<CONFIG:DEBUG>:TBB_USE_DEBUG>
@@ -279,10 +282,34 @@ function(tbb_add_tbbbind_test)
     endif()
     ProcessorCount(SYSTEM_CONCURRENCY)
 
+    # Make sure fake HWLOC is found before system one
+    if (UNIX AND NOT TARGET HWLOC::hwloc_stub AND NOT TBB_TCM_TESTING)
+        # The idea is to produce fake HWLOC library and link it with the test
+        # to ensure that TBBBind won't be loaded in order to simulate the case
+        # when real HWLOC is not present in the system.
+        file(WRITE ${CMAKE_CURRENT_BINARY_DIR}/stubhwloc.cpp "void hwloc_stub(){}")
+        add_library(hwloc_stub SHARED ${CMAKE_CURRENT_BINARY_DIR}/stubhwloc.cpp)
+        add_library(HWLOC::hwloc_stub ALIAS hwloc_stub)
+
+        set_target_properties(hwloc_stub PROPERTIES
+            OUTPUT_NAME "hwloc" SOVERSION 15
+        )
+    endif()
+
     set_tests_properties(${_tbbbind_test_NAME} PROPERTIES
         PASS_REGULAR_EXPRESSION "oneTBB: TBBBIND.*UNAVAILABLE"
         FAIL_REGULAR_EXPRESSION "Status:.*FAILURE"
     )
+
+    if (TARGET HWLOC::hwloc_stub)
+        _tbb_get_hwloc_runtime_vars(
+            ENV_EXTENSION_VARIABLE HWLOC_RUNTIME_VARS
+            HWLOC_VERSION_LIST "hwloc_stub"
+        )
+        target_link_libraries(${_tbbbind_test_NAME} PRIVATE HWLOC::hwloc_stub)
+
+        set_property(TEST ${_tbbbind_test_NAME} PROPERTY ENVIRONMENT "${HWLOC_RUNTIME_VARS}" APPEND)
+    endif()
 
     if (TARGET HWLOC::hwloc_2_5 AND NOT HWLOC_2_5_TESTS_STATUS_SHOWN)
         message(STATUS "HWLOC 2.5 dependent tests were enabled.")
@@ -380,7 +407,9 @@ if (TARGET TBB::tbb)
     # Define the tests
     tbb_add_test(SUBDIR tbb NAME test_tick_count DEPENDENCIES TBB::tbb)
     tbb_add_test(SUBDIR tbb NAME test_allocators DEPENDENCIES TBB::tbb)
-    tbb_add_test(SUBDIR tbb NAME test_arena_priorities DEPENDENCIES TBB::tbb)
+    if (NOT TBB_TCM_TESTING)
+        tbb_add_test(SUBDIR tbb NAME test_arena_priorities DEPENDENCIES TBB::tbb)
+    endif()
     tbb_add_test(SUBDIR tbb NAME test_dynamic_link DEPENDENCIES TBB::tbb)
     if (LINKER_HAS_NO_AS_NEEDED)
         # The linker may not detect a dependency on pthread in static variable constructors.
@@ -389,7 +418,7 @@ if (TARGET TBB::tbb)
     if (APPLE OR ANDROID_PLATFORM)
         target_link_libraries(test_dynamic_link PRIVATE -rdynamic)
     endif()
-    if (WIN32)
+    if (WIN32 AND NOT TBB_TCM_TESTING)
         tbb_add_test(SUBDIR tbb NAME test_numa_dist DEPENDENCIES TBB::tbb)
     endif()
     tbb_add_test(SUBDIR tbb NAME test_collaborative_call_once DEPENDENCIES TBB::tbb)
@@ -413,6 +442,7 @@ if (TARGET TBB::tbb)
     tbb_add_test(SUBDIR tbb NAME test_task_group DEPENDENCIES TBB::tbb)
     tbb_add_test(SUBDIR tbb NAME test_concurrent_hash_map DEPENDENCIES TBB::tbb)
     tbb_add_test(SUBDIR tbb NAME test_task_arena DEPENDENCIES TBB::tbb)
+    tbb_add_test(SUBDIR tbb NAME test_parallel_phase DEPENDENCIES TBB::tbb)
     tbb_add_test(SUBDIR tbb NAME test_enumerable_thread_specific DEPENDENCIES TBB::tbb)
     tbb_add_test(SUBDIR tbb NAME test_concurrent_queue DEPENDENCIES TBB::tbb)
     tbb_add_test(SUBDIR tbb NAME test_resumable_tasks DEPENDENCIES TBB::tbb)
@@ -451,8 +481,23 @@ if (TARGET TBB::tbb)
     tbb_add_test(SUBDIR tbb NAME test_environment_whitebox DEPENDENCIES TBB::tbb)
     tbb_add_test(SUBDIR tbb NAME test_hw_concurrency DEPENDENCIES TBB::tbb)
     tbb_add_test(SUBDIR tbb NAME test_eh_thread DEPENDENCIES TBB::tbb)
-    tbb_add_test(SUBDIR tbb NAME test_global_control DEPENDENCIES TBB::tbb)
+    if (NOT TBB_TCM_TESTING)
+        tbb_add_test(SUBDIR tbb NAME test_global_control DEPENDENCIES TBB::tbb)
+    endif()
     tbb_add_test(SUBDIR tbb NAME test_task DEPENDENCIES TBB::tbb)
+    if (TBB_TCM_TESTING AND NOT WINDOWS_STORE AND NOT TBB_WINDOWS_DRIVER)
+        add_test(NAME test_tcm_enabled COMMAND test_task --force-colors=1 WORKING_DIRECTORY ${TBB_TEST_WORKING_DIRECTORY})
+        set_tests_properties(test_tcm_enabled PROPERTIES
+            ENVIRONMENT "TBB_VERSION=1;TCM_ENABLE=1"
+            PASS_REGULAR_EXPRESSION "TCM: VERSION.*"
+            FAIL_REGULAR_EXPRESSION "TCM: TCM *disabled"
+        )
+        add_test(NAME test_tcm_disabled COMMAND test_task --force-colors=1 WORKING_DIRECTORY ${TBB_TEST_WORKING_DIRECTORY})
+        set_tests_properties(test_tcm_disabled PROPERTIES
+            ENVIRONMENT "TBB_VERSION=1;TCM_ENABLE=0"
+            PASS_REGULAR_EXPRESSION "TCM: TCM *disabled"
+        )
+    endif()
 
     if (TBB_FUZZ_TESTING AND NOT WIN32)
         if (NOT ((CMAKE_CXX_COMPILER_ID STREQUAL Clang) OR (CMAKE_CXX_COMPILER_ID STREQUAL IntelLLVM)))
@@ -519,9 +564,11 @@ if (TARGET TBB::tbb)
     tbb_add_test(SUBDIR conformance NAME conformance_blocked_range DEPENDENCIES TBB::tbb)
     tbb_add_test(SUBDIR conformance NAME conformance_blocked_range2d DEPENDENCIES TBB::tbb)
     tbb_add_test(SUBDIR conformance NAME conformance_blocked_range3d DEPENDENCIES TBB::tbb)
-    tbb_add_test(SUBDIR conformance NAME conformance_blocked_rangeNd DEPENDENCIES TBB::tbb)
+    tbb_add_test(SUBDIR conformance NAME conformance_blocked_nd_range DEPENDENCIES TBB::tbb)
     tbb_add_test(SUBDIR conformance NAME conformance_concurrent_vector DEPENDENCIES TBB::tbb)
-    tbb_add_test(SUBDIR conformance NAME conformance_global_control DEPENDENCIES TBB::tbb)
+    if (NOT TBB_TCM_TESTING)
+        tbb_add_test(SUBDIR conformance NAME conformance_global_control DEPENDENCIES TBB::tbb)
+    endif()
     tbb_add_test(SUBDIR conformance NAME conformance_concurrent_hash_map DEPENDENCIES TBB::tbb)
     tbb_add_test(SUBDIR conformance NAME conformance_enumerable_thread_specific DEPENDENCIES TBB::tbb)
     tbb_add_test(SUBDIR conformance NAME conformance_combinable DEPENDENCIES TBB::tbb)
